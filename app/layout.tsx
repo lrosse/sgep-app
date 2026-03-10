@@ -1,5 +1,7 @@
+import { auth } from "@/auth";
 import { Sidebar } from "@/components/ui/Sidebar";
 import type { Metadata } from "next";
+import { SessionProvider } from "next-auth/react";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -18,20 +20,24 @@ export const metadata: Metadata = {
   description: "Sistema profissional para gestão e acompanhamento de estudos.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await auth();
+
   return (
     <html lang="pt-BR" className="dark">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-950 text-zinc-50 flex h-screen overflow-hidden`}
       >
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto bg-zinc-950/50">
-          {children}
-        </main>
+        <SessionProvider session={session}>
+          {session && <Sidebar />}
+          <main className="flex-1 overflow-y-auto bg-zinc-950/50">
+            {children}
+          </main>
+        </SessionProvider>
       </body>
     </html>
   );
