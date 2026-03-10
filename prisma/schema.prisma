@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 1. Matérias (O que estudar)
+model Materia {
+  id           String   @id @default(cuid())
+  nome         String
+  prioridade   Int      @default(1) // 1 (Baixa) a 3 (Alta)
+  dataExame    DateTime
+  cor          String   @default("pink-600")
+  
+  revisoes     Revisao[]
+  createdAt    DateTime @default(now())
+}
+
+// 2. Revisões (Performance e Inteligência)
+model Revisao {
+  id               String   @id @default(cuid())
+  dataProgramada   DateTime
+  concluida        Boolean  @default(false)
+  
+  questoesTotal    Int      @default(0)
+  questoesAcerto   Int      @default(0)
+  
+  materiaId        String
+  materia          Materia  @relation(fields: [materiaId], references: [id], onDelete: Cascade)
+}
+
+// 3. Metas (O objetivo do usuário) - ESSA ESTAVA FALTANDO!
+model Meta {
+  id               String   @id @default(cuid())
+  objetivoMinutos  Int
+  dataInicio       DateTime @default(now())
+  ativa            Boolean  @default(true)
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// 4. Rotina (Quando o usuário estuda)
+model Rotina {
+  id          String   @id @default(cuid())
+  diaSemana   Int      // 0 (Domingo) a 6 (Sábado)
+  horaInicio  String   
+  horaFim     String   
+}

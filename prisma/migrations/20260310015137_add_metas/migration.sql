@@ -1,0 +1,9 @@
+-- CreateTable
+CREATE TABLE "Meta" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "objetivoMinutos" INTEGER NOT NULL,
+    "dataInicio" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "ativa" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
