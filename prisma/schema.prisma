@@ -7,6 +7,75 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ==========================================
+// FASE 1 — Autenticação e Multi-usuário
+// ==========================================
+
+// 0. Usuário (novo — centro de tudo)
+model User {
+  id            String    @id @default(cuid())
+  nome          String?
+  email         String    @unique
+  senha         String?   // null quando login via OAuth (Google)
+  emailVerified DateTime? // necessário para NextAuth
+  image         String?   // foto de perfil (Google OAuth)
+
+  // Relações com dados do usuário
+  materias      Materia[]
+  rotinas       Rotina[]
+  metas         Meta[]
+
+  // Tabelas exigidas pelo NextAuth v5
+  accounts      Account[]
+  sessions      Session[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// NextAuth — OAuth accounts (Google, etc.)
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// NextAuth — Sessões (database strategy)
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// NextAuth — Tokens de verificação de e-mail
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==========================================
+// MODELOS EXISTENTES — agora com userId
+// ==========================================
+
 // 1. Matérias (O que estudar)
 model Materia {
   id           String   @id @default(cuid())
@@ -14,39 +83,51 @@ model Materia {
   prioridade   Int      @default(1) // 1 (Baixa) a 3 (Alta)
   dataExame    DateTime
   cor          String   @default("pink-600")
-  
+
   revisoes     Revisao[]
   createdAt    DateTime @default(now())
+
+  // FK para o dono da matéria
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// 2. Revisões (Performance e Inteligência)
+// 2. Revisões (Performance e Inteligência) — sem alteração
 model Revisao {
   id               String   @id @default(cuid())
   dataProgramada   DateTime
   concluida        Boolean  @default(false)
-  
+
   questoesTotal    Int      @default(0)
   questoesAcerto   Int      @default(0)
-  
+
   materiaId        String
   materia          Materia  @relation(fields: [materiaId], references: [id], onDelete: Cascade)
 }
 
-// 3. Metas (O objetivo do usuário) - ESSA ESTAVA FALTANDO!
+// 3. Metas (O objetivo do usuário)
 model Meta {
   id               String   @id @default(cuid())
   objetivoMinutos  Int
   dataInicio       DateTime @default(now())
   ativa            Boolean  @default(true)
-  
+
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  // FK para o dono da meta
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // 4. Rotina (Quando o usuário estuda)
 model Rotina {
   id          String   @id @default(cuid())
   diaSemana   Int      // 0 (Domingo) a 6 (Sábado)
-  horaInicio  String   
-  horaFim     String   
+  horaInicio  String
+  horaFim     String
+
+  // FK para o dono da rotina
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
