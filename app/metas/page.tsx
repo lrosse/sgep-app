@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -5,26 +6,35 @@ import { Label } from "@/components/ui/label";
 import { prisma } from "@/lib/prisma";
 import { Target } from "lucide-react";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 export default async function MetasPage() {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+  const userId = session.user.id;
+
   const metas = await prisma.meta.findMany({
-    where: { ativa: true },
+    where: { ativa: true, userId },
     orderBy: { createdAt: "desc" },
   });
 
   async function definirMeta(formData: FormData) {
     "use server";
-    const horas = parseInt(formData.get("horas") as string);
+    const session = await auth();
+    if (!session?.user?.id) return;
+    const userId = session.user.id;
 
-    // Validação: horas devem estar em intervalo válido (0.5 a 168 horas/semana)
+    const horas = parseInt(formData.get("horas") as string);
     if (isNaN(horas) || horas <= 0 || horas > 168) return;
 
-    // Desativa todas as metas anteriores
-    await prisma.meta.updateMany({ data: { ativa: false } });
+    // Desativa apenas as metas do usuário
+    await prisma.meta.updateMany({
+      where: { userId },
+      data: { ativa: false },
+    });
 
-    // Cria nova meta
     await prisma.meta.create({
-      data: { objetivoMinutos: horas * 60 },
+      data: { objetivoMinutos: horas * 60, userId },
     });
 
     revalidatePath("/metas");

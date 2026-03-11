@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,49 +17,79 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { prisma } from "@/lib/prisma";
-import { getTodayAtEndOfDay } from "@/lib/utils";
+import { addDays, getTodayAtEndOfDay, getTodayAtMidnight } from "@/lib/utils";
 import {
   Activity,
   AlertCircle,
   BookCheck,
-  CalendarRange,
-  CheckCircle2,
   PlusCircle,
   TrendingUp,
 } from "lucide-react";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { RevisoesAbas } from "../components/ui/RevisoesAbas";
 
 export default async function Dashboard() {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+  const userId = session.user.id;
+
   // 1. BUSCA DE DADOS
   const materias = await prisma.materia.findMany({
+    where: { userId },
     orderBy: { dataExame: "asc" },
   });
 
   const metaAtual = await prisma.meta.findFirst({
-    where: { ativa: true },
+    where: { ativa: true, userId },
     orderBy: { createdAt: "desc" },
   });
 
-  // Buscamos as revisões já concluídas para o histórico/média
   const revisoesConcluidas = await prisma.revisao.findMany({
-    where: { concluida: true },
+    where: { concluida: true, materia: { userId } },
     include: { materia: true },
     orderBy: { dataProgramada: "desc" },
   });
 
-  // Buscamos o que está agendado para HOJE (ou atrasado) e não foi feito
-  const hoje = getTodayAtEndOfDay();
+  // Datas de referência
+  const inicioDiaHoje = getTodayAtMidnight();
+  const fimDiaHoje = getTodayAtEndOfDay();
+  const fimSemana = addDays(fimDiaHoje, 7);
 
-  const revisoesPendentes = await prisma.revisao.findMany({
+  // Revisões ATRASADAS (antes de hoje, não concluídas)
+  const revisoesAtrasadas = await prisma.revisao.findMany({
     where: {
       concluida: false,
-      dataProgramada: { lte: hoje },
+      dataProgramada: { lt: inicioDiaHoje },
+      materia: { userId },
     },
     include: { materia: true },
     orderBy: { dataProgramada: "asc" },
   });
 
-  // 2. CÁLCULOS DE INTELIGÊNCIA
+  // Revisões de HOJE (não concluídas)
+  const revisoesHoje = await prisma.revisao.findMany({
+    where: {
+      concluida: false,
+      dataProgramada: { gte: inicioDiaHoje, lte: fimDiaHoje },
+      materia: { userId },
+    },
+    include: { materia: true },
+    orderBy: { dataProgramada: "asc" },
+  });
+
+  // Revisões dos PRÓXIMOS 7 DIAS (não concluídas, excluindo hoje)
+  const revisoesSemana = await prisma.revisao.findMany({
+    where: {
+      concluida: false,
+      dataProgramada: { gt: fimDiaHoje, lte: fimSemana },
+      materia: { userId },
+    },
+    include: { materia: true },
+    orderBy: { dataProgramada: "asc" },
+  });
+
+  // 2. CÁLCULOS
   const totalQuestoes = revisoesConcluidas.reduce(
     (acc, r) => acc + r.questoesTotal,
     0,
@@ -69,21 +100,26 @@ export default async function Dashboard() {
   );
   const desempenhoGeral =
     totalQuestoes > 0 ? Math.round((totalAcertos / totalQuestoes) * 100) : 0;
-
   const objetivoMinutos = metaAtual?.objetivoMinutos || 0;
 
-  // 3. AÇÃO DE REGISTRO DE PERFORMANCE
+  // 3. SERVER ACTION
   async function registrarPerformance(formData: FormData) {
     "use server";
+    const session = await auth();
+    if (!session?.user?.id) return;
+
     const materiaId = formData.get("materiaId") as string;
     const total = parseInt(formData.get("total") as string);
     const acertos = parseInt(formData.get("acertos") as string);
 
-    // Validação rigorosa: material, total, acertos válidos e coerentes
     if (!materiaId || isNaN(total) || isNaN(acertos)) return;
     if (total <= 0 || acertos < 0 || acertos > total) return;
 
-    // Registra a conclusão e os dados de acerto
+    const materia = await prisma.materia.findFirst({
+      where: { id: materiaId, userId: session.user.id },
+    });
+    if (!materia) return;
+
     await prisma.revisao.create({
       data: {
         materiaId,
@@ -108,7 +144,7 @@ export default async function Dashboard() {
         </p>
       </header>
 
-      {/* MÉTRICAS DE PERFORMANCE */}
+      {/* MÉTRICAS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-zinc-900 border-zinc-800">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -163,50 +199,12 @@ export default async function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* CRONOGRAMA INTELIGENTE (O QUE ESTUDAR HOJE) */}
-        <Card className="bg-zinc-900 border-zinc-800">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-white">
-              <CalendarRange className="w-5 h-5 text-pink-600" /> O que estudar
-              hoje?
-            </CardTitle>
-            <CardDescription className="text-zinc-400">
-              Tarefas agendadas automaticamente pela sua rotina.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {revisoesPendentes.length === 0 ? (
-              <div className="text-center py-10 border-2 border-dashed border-zinc-800 rounded-xl">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-3" />
-                <p className="text-zinc-500 text-sm font-medium">
-                  Você está em dia com seu cronograma!
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {revisoesPendentes.map((rev) => (
-                  <div
-                    key={rev.id}
-                    className="flex justify-between items-center p-4 rounded-lg bg-zinc-950 border-l-4 border-pink-600"
-                  >
-                    <div>
-                      <p className="font-bold text-white">{rev.materia.nome}</p>
-                      <p className="text-xs text-zinc-500">
-                        Agendado para:{" "}
-                        {new Date(rev.dataProgramada).toLocaleDateString(
-                          "pt-BR",
-                        )}
-                      </p>
-                    </div>
-                    <div className="px-3 py-1 bg-zinc-900 rounded-full text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                      P{rev.materia.prioridade}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* ABAS DE REVISÕES */}
+        <RevisoesAbas
+          revisoesAtrasadas={revisoesAtrasadas}
+          revisoesHoje={revisoesHoje}
+          revisoesSemana={revisoesSemana}
+        />
 
         {/* REGISTRO DE PERFORMANCE */}
         <Card className="bg-zinc-900 border-zinc-800">
@@ -269,7 +267,7 @@ export default async function Dashboard() {
         </Card>
       </div>
 
-      {/* HISTÓRICO DE PERFORMANCE */}
+      {/* HISTÓRICO */}
       <Card className="bg-zinc-900 border-zinc-800">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -288,7 +286,7 @@ export default async function Dashboard() {
                   rev.questoesTotal > 0
                     ? Math.round((rev.questoesAcerto / rev.questoesTotal) * 100)
                     : 0;
-                const isGoodPerformance =
+                const isGood =
                   rev.questoesTotal > 0 &&
                   rev.questoesAcerto / rev.questoesTotal >= 0.7;
                 return (
@@ -303,7 +301,7 @@ export default async function Dashboard() {
                       </p>
                     </div>
                     <div
-                      className={`text-lg font-black ${isGoodPerformance ? "text-emerald-500" : "text-red-500"}`}
+                      className={`text-lg font-black ${isGood ? "text-emerald-500" : "text-red-500"}`}
                     >
                       {percentual}%
                     </div>

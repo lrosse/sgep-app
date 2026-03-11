@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { CalendarDays, Clock, Trash2 } from "lucide-react";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 const DIAS_SEMANA = [
   "Domingo",
@@ -24,24 +26,30 @@ const DIAS_SEMANA = [
 ];
 
 export default async function RotinaPage() {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+  const userId = session.user.id;
+
   const rotinas = await prisma.rotina.findMany({
+    where: { userId },
     orderBy: [{ diaSemana: "asc" }, { horaInicio: "asc" }],
   });
 
   async function adicionarHorario(formData: FormData) {
     "use server";
+    const session = await auth();
+    if (!session?.user?.id) return;
+    const userId = session.user.id;
+
     const diaSemana = parseInt(formData.get("dia") as string);
     const horaInicio = formData.get("inicio") as string;
     const horaFim = formData.get("fim") as string;
 
-    // Validação: dia da semana válido (0-6)
     if (isNaN(diaSemana) || diaSemana < 0 || diaSemana > 6) return;
-
-    // Validação: horas em formato válido e horaFim > horaInicio
     if (!horaInicio || !horaFim || horaFim <= horaInicio) return;
 
     await prisma.rotina.create({
-      data: { diaSemana, horaInicio, horaFim },
+      data: { diaSemana, horaInicio, horaFim, userId },
     });
 
     revalidatePath("/rotina");
@@ -49,7 +57,14 @@ export default async function RotinaPage() {
 
   async function excluirHorario(id: string) {
     "use server";
-    await prisma.rotina.delete({ where: { id } });
+    const session = await auth();
+    if (!session?.user?.id) return;
+
+    // Garante que o horário pertence ao usuário
+    await prisma.rotina.deleteMany({
+      where: { id, userId: session.user.id },
+    });
+
     revalidatePath("/rotina");
   }
 
@@ -65,7 +80,6 @@ export default async function RotinaPage() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Formulário de Cadastro */}
         <Card className="bg-zinc-900 border-zinc-800 h-fit">
           <CardHeader>
             <CardTitle className="text-white">Novo Bloco de Tempo</CardTitle>
@@ -119,7 +133,6 @@ export default async function RotinaPage() {
           </CardContent>
         </Card>
 
-        {/* Lista de Horários */}
         <div className="lg:col-span-2 space-y-4">
           <Card className="bg-zinc-900 border-zinc-800">
             <CardHeader>

@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,13 +14,18 @@ import { prisma } from "@/lib/prisma";
 import { addDays, getTodayAtMidnight, isFutureDate } from "@/lib/utils";
 import { Calendar } from "lucide-react";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 export default async function MateriasPage() {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+  const userId = session.user.id;
+
   const materias = await prisma.materia.findMany({
+    where: { userId },
     orderBy: { dataExame: "asc" },
   });
 
-  // Mapa de cores - Tailwind não parseia classe dinâmica, então usamos inline style
   const coresMap: Record<string, string> = {
     "pink-600": "#ec4899",
     "blue-600": "#2563eb",
@@ -31,37 +37,33 @@ export default async function MateriasPage() {
 
   async function criarMateria(formData: FormData) {
     "use server";
+    const session = await auth();
+    if (!session?.user?.id) return;
+    const userId = session.user.id;
+
     const nome = formData.get("nome") as string;
     const dataExame = new Date(formData.get("dataExame") as string);
     const prioridade = parseInt(formData.get("prioridade") as string);
 
-    // Validação 1: dados básicos
     if (!nome || isNaN(dataExame.getTime())) return;
     if (prioridade < 1 || prioridade > 3) return;
-
-    // Validação 2: data de exame deve ser no futuro
     if (!isFutureDate(dataExame)) return;
 
-    // Validação 3: rotina cadastrada (ANTES de criar matéria)
-    const rotinas = await prisma.rotina.findMany();
+    // Rotina filtrada por usuário
+    const rotinas = await prisma.rotina.findMany({ where: { userId } });
     if (rotinas.length === 0) return;
 
-    // 1. Cria a Matéria
     const novaMateria = await prisma.materia.create({
-      data: { nome, dataExame, prioridade },
+      data: { nome, dataExame, prioridade, userId },
     });
 
-    // 2. Define os intervalos de revisão
     const intervalos = [1, 7, 14];
     const hoje = getTodayAtMidnight();
 
     for (const dias of intervalos) {
       const dataAlvo = addDays(hoje, dias);
-
-      // Validação: revisão não pode ser programada para depois da prova
       if (dataAlvo >= dataExame) continue;
 
-      // Encontra o próximo dia da rotina disponível
       const horarioDisponivel = rotinas.find(
         (r) => r.diaSemana === dataAlvo.getDay(),
       );
@@ -77,10 +79,7 @@ export default async function MateriasPage() {
       }
     }
 
-    // 3. Cria a revisão "Véspera de Prova"
     const vespera = addDays(dataExame, -1);
-
-    // Validação: véspera não pode ser antes de hoje
     if (vespera >= hoje) {
       await prisma.revisao.create({
         data: {
