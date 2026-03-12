@@ -1,40 +1,21 @@
 import { auth } from "@/auth";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RevisoesAbas } from "@/components/ui/RevisoesAbas";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  calcularPrioridadeAdaptativa,
+  calcularTaxaAcerto,
+} from "@/lib/adaptive";
 import { prisma } from "@/lib/prisma";
 import { addDays, getTodayAtEndOfDay, getTodayAtMidnight } from "@/lib/utils";
-import {
-  Activity,
-  AlertCircle,
-  BookCheck,
-  PlusCircle,
-  TrendingUp,
-} from "lucide-react";
+import { Activity, AlertCircle, BookCheck, TrendingUp } from "lucide-react";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { RevisoesAbas } from "../components/ui/RevisoesAbas";
 
 export default async function Dashboard() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   const userId = session.user.id;
 
-  // 1. BUSCA DE DADOS
   const materias = await prisma.materia.findMany({
     where: { userId },
     orderBy: { dataExame: "asc" },
@@ -48,15 +29,13 @@ export default async function Dashboard() {
   const revisoesConcluidas = await prisma.revisao.findMany({
     where: { concluida: true, materia: { userId } },
     include: { materia: true },
-    orderBy: { dataProgramada: "desc" },
+    orderBy: { concluidaEm: "desc" },
   });
 
-  // Datas de referência
   const inicioDiaHoje = getTodayAtMidnight();
   const fimDiaHoje = getTodayAtEndOfDay();
   const fimSemana = addDays(fimDiaHoje, 7);
 
-  // Revisões ATRASADAS (antes de hoje, não concluídas)
   const revisoesAtrasadas = await prisma.revisao.findMany({
     where: {
       concluida: false,
@@ -67,7 +46,6 @@ export default async function Dashboard() {
     orderBy: { dataProgramada: "asc" },
   });
 
-  // Revisões de HOJE (não concluídas)
   const revisoesHoje = await prisma.revisao.findMany({
     where: {
       concluida: false,
@@ -78,7 +56,6 @@ export default async function Dashboard() {
     orderBy: { dataProgramada: "asc" },
   });
 
-  // Revisões dos PRÓXIMOS 7 DIAS (não concluídas, excluindo hoje)
   const revisoesSemana = await prisma.revisao.findMany({
     where: {
       concluida: false,
@@ -89,7 +66,6 @@ export default async function Dashboard() {
     orderBy: { dataProgramada: "asc" },
   });
 
-  // 2. CÁLCULOS
   const totalQuestoes = revisoesConcluidas.reduce(
     (acc, r) => acc + r.questoesTotal,
     0,
@@ -102,32 +78,58 @@ export default async function Dashboard() {
     totalQuestoes > 0 ? Math.round((totalAcertos / totalQuestoes) * 100) : 0;
   const objetivoMinutos = metaAtual?.objetivoMinutos || 0;
 
-  // 3. SERVER ACTION
-  async function registrarPerformance(formData: FormData) {
+  async function concluirRevisao(formData: FormData) {
     "use server";
     const session = await auth();
     if (!session?.user?.id) return;
 
-    const materiaId = formData.get("materiaId") as string;
+    const revisaoId = formData.get("revisaoId") as string;
     const total = parseInt(formData.get("total") as string);
     const acertos = parseInt(formData.get("acertos") as string);
 
-    if (!materiaId || isNaN(total) || isNaN(acertos)) return;
+    if (!revisaoId || isNaN(total) || isNaN(acertos)) return;
     if (total <= 0 || acertos < 0 || acertos > total) return;
 
-    const materia = await prisma.materia.findFirst({
-      where: { id: materiaId, userId: session.user.id },
+    const revisao = await prisma.revisao.findFirst({
+      where: { id: revisaoId, materia: { userId: session.user.id } },
+      include: { materia: true },
     });
-    if (!materia) return;
+    if (!revisao) return;
 
-    await prisma.revisao.create({
+    // Atualiza a revisão com concluidaEm
+    await prisma.revisao.update({
+      where: { id: revisaoId },
       data: {
-        materiaId,
-        dataProgramada: new Date(),
         concluida: true,
+        concluidaEm: new Date(),
         questoesTotal: total,
         questoesAcerto: acertos,
       },
+    });
+
+    // Recalcula prioridade adaptativa
+    const todasRevisoes = await prisma.revisao.findMany({
+      where: { materiaId: revisao.materiaId, concluida: true },
+    });
+
+    const totalQuestoesAcum = todasRevisoes.reduce(
+      (acc, r) => acc + r.questoesTotal,
+      0,
+    );
+    const totalAcertosAcum = todasRevisoes.reduce(
+      (acc, r) => acc + r.questoesAcerto,
+      0,
+    );
+
+    const taxaAcerto = calcularTaxaAcerto(totalAcertosAcum, totalQuestoesAcum);
+    const novaPrioridade = calcularPrioridadeAdaptativa(
+      revisao.materia.pesoNoExame,
+      taxaAcerto,
+    );
+
+    await prisma.materia.update({
+      where: { id: revisao.materiaId },
+      data: { prioridadeAdaptativa: novaPrioridade },
     });
 
     revalidatePath("/");
@@ -144,7 +146,6 @@ export default async function Dashboard() {
         </p>
       </header>
 
-      {/* MÉTRICAS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-zinc-900 border-zinc-800">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -198,76 +199,13 @@ export default async function Dashboard() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* ABAS DE REVISÕES */}
-        <RevisoesAbas
-          revisoesAtrasadas={revisoesAtrasadas}
-          revisoesHoje={revisoesHoje}
-          revisoesSemana={revisoesSemana}
-        />
+      <RevisoesAbas
+        revisoesAtrasadas={revisoesAtrasadas}
+        revisoesHoje={revisoesHoje}
+        revisoesSemana={revisoesSemana}
+        onConcluir={concluirRevisao}
+      />
 
-        {/* REGISTRO DE PERFORMANCE */}
-        <Card className="bg-zinc-900 border-zinc-800">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <PlusCircle className="w-5 h-5 text-pink-600" /> Registrar
-              Desempenho
-            </CardTitle>
-            <CardDescription className="text-zinc-400">
-              Insira os dados da sessão para alimentar o algoritmo.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form action={registrarPerformance} className="space-y-4">
-              <div className="grid grid-cols-1 gap-4">
-                <div className="space-y-2">
-                  <Label>Matéria Estudada</Label>
-                  <Select name="materiaId" required>
-                    <SelectTrigger className="bg-zinc-950 border-zinc-800">
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent className="bg-zinc-900 border-zinc-800 text-white">
-                      {materias.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {m.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Total de Questões</Label>
-                    <Input
-                      name="total"
-                      type="number"
-                      required
-                      className="bg-zinc-950 border-zinc-800"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Acertos</Label>
-                    <Input
-                      name="acertos"
-                      type="number"
-                      required
-                      className="bg-zinc-950 border-zinc-800"
-                    />
-                  </div>
-                </div>
-              </div>
-              <Button
-                type="submit"
-                className="w-full bg-pink-600 hover:bg-pink-700"
-              >
-                Salvar e Analisar Ciclo
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* HISTÓRICO */}
       <Card className="bg-zinc-900 border-zinc-800">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -277,7 +215,7 @@ export default async function Dashboard() {
         <CardContent>
           {revisoesConcluidas.length === 0 ? (
             <p className="text-zinc-500 text-center py-4">
-              Nenhum registro de questões concluído ainda.
+              Nenhuma revisão concluída ainda.
             </p>
           ) : (
             <div className="space-y-3">
@@ -294,10 +232,27 @@ export default async function Dashboard() {
                     key={rev.id}
                     className="flex justify-between items-center p-4 rounded-lg bg-zinc-950 border border-zinc-800"
                   >
-                    <div>
-                      <p className="font-bold">{rev.materia.nome}</p>
-                      <p className="text-sm text-zinc-500">
+                    <div className="space-y-1">
+                      <p className="font-bold text-white">{rev.materia.nome}</p>
+                      <p className="text-xs text-zinc-500">
                         {rev.questoesAcerto}/{rev.questoesTotal} acertos
+                      </p>
+                      <p className="text-xs text-zinc-600">
+                        Estudado em:{" "}
+                        {rev.concluidaEm
+                          ? new Date(rev.concluidaEm).toLocaleDateString(
+                              "pt-BR",
+                              {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              },
+                            )
+                          : new Date(rev.dataProgramada).toLocaleDateString(
+                              "pt-BR",
+                            )}
                       </p>
                     </div>
                     <div

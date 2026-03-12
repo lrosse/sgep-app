@@ -1,4 +1,6 @@
 import { auth } from "@/auth";
+import { ColorPicker } from "@/components/ui/ColorPicker";
+import { MateriasClient } from "@/components/ui/MateriasClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,8 +13,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { prisma } from "@/lib/prisma";
-import { addDays, getTodayAtMidnight, isFutureDate } from "@/lib/utils";
-import { Calendar } from "lucide-react";
+import {
+  addDays,
+  getTodayAtMidnight,
+  isFutureDate,
+  parseDateLocal,
+} from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -42,19 +48,29 @@ export default async function MateriasPage() {
     const userId = session.user.id;
 
     const nome = formData.get("nome") as string;
-    const dataExame = new Date(formData.get("dataExame") as string);
+    const dataExame = parseDateLocal(formData.get("dataExame") as string);
     const prioridade = parseInt(formData.get("prioridade") as string);
+    const pesoNoExame = parseFloat(formData.get("pesoNoExame") as string);
+    const cor = (formData.get("cor") as string) || "#ec4899";
 
     if (!nome || isNaN(dataExame.getTime())) return;
     if (prioridade < 1 || prioridade > 3) return;
     if (!isFutureDate(dataExame)) return;
+    if (isNaN(pesoNoExame) || pesoNoExame < 0 || pesoNoExame > 100) return;
 
-    // Rotina filtrada por usuário
     const rotinas = await prisma.rotina.findMany({ where: { userId } });
     if (rotinas.length === 0) return;
 
     const novaMateria = await prisma.materia.create({
-      data: { nome, dataExame, prioridade, userId },
+      data: {
+        nome,
+        dataExame,
+        prioridade,
+        pesoNoExame,
+        cor,
+        prioridadeAdaptativa: pesoNoExame / 100,
+        userId,
+      },
     });
 
     const intervalos = [1, 7, 14];
@@ -89,6 +105,98 @@ export default async function MateriasPage() {
         },
       });
     }
+
+    revalidatePath("/materias");
+    revalidatePath("/");
+  }
+
+  async function editarMateria(formData: FormData) {
+    "use server";
+    const session = await auth();
+    if (!session?.user?.id) return;
+
+    const id = formData.get("id") as string;
+    const nome = formData.get("nome") as string;
+    const dataExame = parseDateLocal(formData.get("dataExame") as string);
+    const prioridade = parseInt(formData.get("prioridade") as string);
+    const pesoNoExame = parseFloat(formData.get("pesoNoExame") as string);
+    const cor = formData.get("cor") as string;
+
+    if (!id || !nome || isNaN(dataExame.getTime())) return;
+    if (prioridade < 1 || prioridade > 3) return;
+    if (isNaN(pesoNoExame) || pesoNoExame < 0 || pesoNoExame > 100) return;
+
+    const materia = await prisma.materia.findFirst({
+      where: { id, userId: session.user.id },
+    });
+    if (!materia) return;
+
+    await prisma.materia.update({
+      where: { id },
+      data: { nome, dataExame, prioridade, pesoNoExame, cor },
+    });
+
+    if (materia.dataExame.getTime() !== dataExame.getTime()) {
+      const hoje = getTodayAtMidnight();
+
+      await prisma.revisao.deleteMany({
+        where: {
+          materiaId: id,
+          concluida: false,
+          dataProgramada: { gte: hoje },
+        },
+      });
+
+      const rotinas = await prisma.rotina.findMany({
+        where: { userId: session.user.id },
+      });
+
+      const intervalos = [1, 7, 14];
+      for (const dias of intervalos) {
+        const dataAlvo = addDays(hoje, dias);
+        if (dataAlvo >= dataExame) continue;
+
+        const horarioDisponivel = rotinas.find(
+          (r) => r.diaSemana === dataAlvo.getDay(),
+        );
+        if (horarioDisponivel) {
+          await prisma.revisao.create({
+            data: {
+              materiaId: id,
+              dataProgramada: dataAlvo,
+              concluida: false,
+            },
+          });
+        }
+      }
+
+      const vespera = addDays(dataExame, -1);
+      if (vespera >= hoje) {
+        await prisma.revisao.create({
+          data: {
+            materiaId: id,
+            dataProgramada: vespera,
+            concluida: false,
+          },
+        });
+      }
+    }
+
+    revalidatePath("/materias");
+    revalidatePath("/");
+  }
+
+  async function deletarMateria(id: string) {
+    "use server";
+    const session = await auth();
+    if (!session?.user?.id) return;
+
+    const materia = await prisma.materia.findFirst({
+      where: { id, userId: session.user.id },
+    });
+    if (!materia) return;
+
+    await prisma.materia.delete({ where: { id } });
 
     revalidatePath("/materias");
     revalidatePath("/");
@@ -133,6 +241,24 @@ export default async function MateriasPage() {
               </div>
 
               <div className="space-y-2">
+                <Label>Peso no Exame (50% padrão)</Label>
+                <input
+                  name="pesoNoExame"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  defaultValue={50}
+                  className="w-full accent-pink-600"
+                />
+                <div className="flex justify-between text-xs text-zinc-500">
+                  <span>0%</span>
+                  <span>50%</span>
+                  <span>100%</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
                 <Label>Prioridade (Peso)</Label>
                 <Select name="prioridade" defaultValue="2">
                   <SelectTrigger className="bg-zinc-950 border-zinc-800">
@@ -150,6 +276,8 @@ export default async function MateriasPage() {
                 </Select>
               </div>
 
+              <ColorPicker name="cor" defaultValue="#ec4899" />
+
               <Button
                 type="submit"
                 className="w-full bg-pink-600 hover:bg-pink-700"
@@ -160,41 +288,12 @@ export default async function MateriasPage() {
           </CardContent>
         </Card>
 
-        <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {materias.map((m) => (
-            <Card
-              key={m.id}
-              className="bg-zinc-900 border-zinc-800 overflow-hidden"
-            >
-              <div
-                className="h-1.5 w-full"
-                style={{
-                  backgroundColor: coresMap[m.cor] || coresMap["pink-600"],
-                }}
-              />
-              <CardContent className="p-5 space-y-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-xl">{m.nome}</h3>
-                    <p className="text-sm text-zinc-500 flex items-center gap-1 mt-1">
-                      <Calendar className="w-3 h-3" /> Prova:{" "}
-                      {m.dataExame.toLocaleDateString("pt-BR")}
-                    </p>
-                  </div>
-                  <div
-                    className={`px-2 py-1 rounded text-xs font-bold ${
-                      m.prioridade === 3
-                        ? "bg-red-500/10 text-red-500"
-                        : "bg-blue-500/10 text-blue-500"
-                    }`}
-                  >
-                    P{m.prioridade}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <MateriasClient
+          materias={materias}
+          coresMap={coresMap}
+          onEditar={editarMateria}
+          onDeletar={deletarMateria}
+        />
       </div>
     </div>
   );

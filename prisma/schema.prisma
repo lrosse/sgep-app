@@ -78,11 +78,13 @@ model VerificationToken {
 
 // 1. Matérias (O que estudar)
 model Materia {
-  id           String   @id @default(cuid())
-  nome         String
-  prioridade   Int      @default(1) // 1 (Baixa) a 3 (Alta)
-  dataExame    DateTime
-  cor          String   @default("pink-600")
+  id                   String   @id @default(cuid())
+  nome                 String
+  prioridade           Int      @default(1)        // 1 (Baixa) a 3 (Alta) — definido pelo aluno
+  pesoNoExame          Float    @default(50)       // 0 a 100 — % de peso na prova
+  prioridadeAdaptativa Float    @default(1)        // calculada automaticamente pelo algoritmo
+  dataExame            DateTime
+  cor                  String   @default("pink-600")
 
   revisoes     Revisao[]
   createdAt    DateTime @default(now())
@@ -94,9 +96,10 @@ model Materia {
 
 // 2. Revisões (Performance e Inteligência) — sem alteração
 model Revisao {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   dataProgramada   DateTime
-  concluida        Boolean  @default(false)
+  concluida        Boolean   @default(false)
+  concluidaEm      DateTime? // null até ser concluída
 
   questoesTotal    Int      @default(0)
   questoesAcerto   Int      @default(0)
