@@ -31,6 +31,8 @@ model User {
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  streak Streak?
 }
 
 // NextAuth — OAuth accounts (Google, etc.)
@@ -92,6 +94,7 @@ model Materia {
   // FK para o dono da matéria
   userId       String
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
 }
 
 // 2. Revisões (Performance e Inteligência) — sem alteração
@@ -134,3 +137,14 @@ model Rotina {
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+model Streak {
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  atual       Int       @default(0)
+  maximo      Int       @default(0)
+  ultimoEstudo DateTime?
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+

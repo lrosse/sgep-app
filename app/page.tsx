@@ -1,11 +1,13 @@
 import { auth } from "@/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RevisoesAbas } from "@/components/ui/RevisoesAbas";
+import { StreakCard } from "@/components/ui/StreakCard";
 import {
   calcularPrioridadeAdaptativa,
   calcularTaxaAcerto,
 } from "@/lib/adaptive";
 import { prisma } from "@/lib/prisma";
+import { buscarStreak, incrementarStreak } from "@/lib/streak";
 import { addDays, getTodayAtEndOfDay, getTodayAtMidnight } from "@/lib/utils";
 import { Activity, AlertCircle, BookCheck, TrendingUp } from "lucide-react";
 import { revalidatePath } from "next/cache";
@@ -78,6 +80,9 @@ export default async function Dashboard() {
     totalQuestoes > 0 ? Math.round((totalAcertos / totalQuestoes) * 100) : 0;
   const objetivoMinutos = metaAtual?.objetivoMinutos || 0;
 
+  // Busca streak atual
+  const streak = await buscarStreak(userId);
+
   async function concluirRevisao(formData: FormData) {
     "use server";
     const session = await auth();
@@ -96,7 +101,6 @@ export default async function Dashboard() {
     });
     if (!revisao) return;
 
-    // Atualiza a revisão com concluidaEm
     await prisma.revisao.update({
       where: { id: revisaoId },
       data: {
@@ -106,6 +110,9 @@ export default async function Dashboard() {
         questoesAcerto: acertos,
       },
     });
+
+    // Incrementa streak
+    await incrementarStreak(session.user.id);
 
     // Recalcula prioridade adaptativa
     const todasRevisoes = await prisma.revisao.findMany({
@@ -120,7 +127,6 @@ export default async function Dashboard() {
       (acc, r) => acc + r.questoesAcerto,
       0,
     );
-
     const taxaAcerto = calcularTaxaAcerto(totalAcertosAcum, totalQuestoesAcum);
     const novaPrioridade = calcularPrioridadeAdaptativa(
       revisao.materia.pesoNoExame,
@@ -146,6 +152,10 @@ export default async function Dashboard() {
         </p>
       </header>
 
+      {/* STREAK */}
+      <StreakCard atual={streak?.atual ?? 0} maximo={streak?.maximo ?? 0} />
+
+      {/* CARDS DE STATS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-zinc-900 border-zinc-800">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -206,6 +216,7 @@ export default async function Dashboard() {
         onConcluir={concluirRevisao}
       />
 
+      {/* HISTÓRICO */}
       <Card className="bg-zinc-900 border-zinc-800">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

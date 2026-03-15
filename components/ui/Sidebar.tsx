@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  CalendarDays,
   CalendarRange,
   LayoutDashboard,
   Settings,
@@ -33,7 +34,6 @@ export function Sidebar() {
           Matérias
         </Link>
 
-        {/* NOVA ROTA: MINHA ROTINA */}
         <Link
           href="/rotina"
           className="flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg text-zinc-400 hover:bg-zinc-900 hover:text-white transition-colors"
@@ -48,6 +48,15 @@ export function Sidebar() {
         >
           <Target className="w-5 h-5" />
           Metas
+        </Link>
+
+        {/* NOVA ROTA: PLANO SEMANAL */}
+        <Link
+          href="/plano-semanal"
+          className="flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg text-zinc-400 hover:bg-zinc-900 hover:text-white transition-colors"
+        >
+          <CalendarDays className="w-5 h-5" />
+          Plano Semanal
         </Link>
       </nav>
 
