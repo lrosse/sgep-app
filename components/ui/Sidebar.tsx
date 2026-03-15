@@ -1,3 +1,4 @@
+import { NotificationPermission } from "@/components/ui/NotificationPermission";
 import {
   BookOpen,
   CalendarDays,
@@ -50,7 +51,6 @@ export function Sidebar() {
           Metas
         </Link>
 
-        {/* NOVA ROTA: PLANO SEMANAL */}
         <Link
           href="/plano-semanal"
           className="flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg text-zinc-400 hover:bg-zinc-900 hover:text-white transition-colors"
@@ -60,7 +60,12 @@ export function Sidebar() {
         </Link>
       </nav>
 
-      <div className="mt-auto mb-4">
+      <div className="mt-auto mb-4 space-y-2">
+        {/* Botão de notificações */}
+        <div className="px-4">
+          <NotificationPermission />
+        </div>
+
         <Link
           href="/configuracoes"
           className="flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg text-zinc-400 hover:bg-zinc-900 hover:text-white transition-colors"
