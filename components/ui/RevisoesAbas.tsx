@@ -8,7 +8,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AlertTriangle, CalendarRange, CheckCircle2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarRange,
+  CheckCircle2,
+  Flame,
+} from "lucide-react";
 import { useState } from "react";
 
 type Revisao = {
@@ -25,6 +30,7 @@ type Props = {
   revisoesHoje: Revisao[];
   revisoesSemana: Revisao[];
   onConcluir: (formData: FormData) => Promise<void>;
+  materiasVesperaIds?: string[]; // ids das matérias em modo véspera
 };
 
 export function RevisoesAbas({
@@ -32,6 +38,7 @@ export function RevisoesAbas({
   revisoesHoje,
   revisoesSemana,
   onConcluir,
+  materiasVesperaIds = [],
 }: Props) {
   const [abaAtiva, setAbaAtiva] = useState<"hoje" | "semana" | "atrasadas">(
     "hoje",
@@ -150,39 +157,59 @@ export function RevisoesAbas({
             </div>
           ) : (
             <div className="space-y-3">
-              {revisoesAtivas.map((rev) => (
-                <div
-                  key={rev.id}
-                  className={`flex justify-between items-center p-4 rounded-lg bg-zinc-950 border-l-4 ${
-                    abaAtiva === "atrasadas"
-                      ? "border-amber-500"
-                      : abaAtiva === "semana"
-                        ? "border-blue-500"
-                        : "border-pink-600"
-                  }`}
-                >
-                  <div>
-                    <p className="font-bold text-white">{rev.materia.nome}</p>
-                    <p className="text-xs text-zinc-500">
-                      {abaAtiva === "atrasadas"
-                        ? "Atrasada desde: "
-                        : "Agendado para: "}
-                      {new Date(rev.dataProgramada).toLocaleDateString("pt-BR")}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="px-3 py-1 bg-zinc-900 rounded-full text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                      P{rev.materia.prioridade}
+              {revisoesAtivas.map((rev) => {
+                // matéria em modo véspera — só destaca na aba "hoje"
+                const isVespera =
+                  abaAtiva === "hoje" &&
+                  materiasVesperaIds.includes(rev.materia.nome);
+
+                return (
+                  <div
+                    key={rev.id}
+                    className={`flex justify-between items-center p-4 rounded-lg border-l-4 transition-colors ${
+                      isVespera
+                        ? "bg-red-950/40 border-red-500"
+                        : abaAtiva === "atrasadas"
+                          ? "bg-zinc-950 border-amber-500"
+                          : abaAtiva === "semana"
+                            ? "bg-zinc-950 border-blue-500"
+                            : "bg-zinc-950 border-pink-600"
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-white">
+                          {rev.materia.nome}
+                        </p>
+                        {isVespera && (
+                          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 text-[10px] font-bold uppercase tracking-wider">
+                            <Flame className="w-3 h-3" /> Véspera
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-zinc-500">
+                        {abaAtiva === "atrasadas"
+                          ? "Atrasada desde: "
+                          : "Agendado para: "}
+                        {new Date(rev.dataProgramada).toLocaleDateString(
+                          "pt-BR",
+                        )}
+                      </p>
                     </div>
-                    <button
-                      onClick={() => setRevisaoSelecionada(rev)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-bold transition-colors"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Concluir
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <div className="px-3 py-1 bg-zinc-900 rounded-full text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                        P{rev.materia.prioridade}
+                      </div>
+                      <button
+                        onClick={() => setRevisaoSelecionada(rev)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-bold transition-colors"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Concluir
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>

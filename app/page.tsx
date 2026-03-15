@@ -2,11 +2,13 @@ import { auth } from "@/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RevisoesAbas } from "@/components/ui/RevisoesAbas";
 import { StreakCard } from "@/components/ui/StreakCard";
+import { VesperaBanner } from "@/components/ui/VesperaBanner";
 import {
   calcularPrioridadeAdaptativa,
   calcularTaxaAcerto,
 } from "@/lib/adaptive";
 import { prisma } from "@/lib/prisma";
+import { detectarModoVespera } from "@/lib/scheduler";
 import { buscarStreak, incrementarStreak } from "@/lib/streak";
 import { addDays, getTodayAtEndOfDay, getTodayAtMidnight } from "@/lib/utils";
 import { Activity, AlertCircle, BookCheck, TrendingUp } from "lucide-react";
@@ -48,7 +50,7 @@ export default async function Dashboard() {
     orderBy: { dataProgramada: "asc" },
   });
 
-  const revisoesHoje = await prisma.revisao.findMany({
+  const revisoesHojeBruto = await prisma.revisao.findMany({
     where: {
       concluida: false,
       dataProgramada: { gte: inicioDiaHoje, lte: fimDiaHoje },
@@ -80,8 +82,18 @@ export default async function Dashboard() {
     totalQuestoes > 0 ? Math.round((totalAcertos / totalQuestoes) * 100) : 0;
   const objetivoMinutos = metaAtual?.objetivoMinutos || 0;
 
-  // Busca streak atual
   const streak = await buscarStreak(userId);
+
+  // Detecta modo véspera
+  const materiasVespera = await detectarModoVespera(userId);
+  const nomesVespera = materiasVespera.map((m) => m.nome);
+
+  // Ordena revisões de hoje: véspera primeiro, depois o resto
+  const revisoesHoje = [...revisoesHojeBruto].sort((a, b) => {
+    const aVespera = nomesVespera.includes(a.materia.nome) ? 0 : 1;
+    const bVespera = nomesVespera.includes(b.materia.nome) ? 0 : 1;
+    return aVespera - bVespera;
+  });
 
   async function concluirRevisao(formData: FormData) {
     "use server";
@@ -111,10 +123,8 @@ export default async function Dashboard() {
       },
     });
 
-    // Incrementa streak
     await incrementarStreak(session.user.id);
 
-    // Recalcula prioridade adaptativa
     const todasRevisoes = await prisma.revisao.findMany({
       where: { materiaId: revisao.materiaId, concluida: true },
     });
@@ -152,10 +162,12 @@ export default async function Dashboard() {
         </p>
       </header>
 
-      {/* STREAK */}
       <StreakCard atual={streak?.atual ?? 0} maximo={streak?.maximo ?? 0} />
 
-      {/* CARDS DE STATS */}
+      {materiasVespera.length > 0 && (
+        <VesperaBanner materias={materiasVespera} />
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-zinc-900 border-zinc-800">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -214,9 +226,9 @@ export default async function Dashboard() {
         revisoesHoje={revisoesHoje}
         revisoesSemana={revisoesSemana}
         onConcluir={concluirRevisao}
+        materiasVesperaIds={nomesVespera}
       />
 
-      {/* HISTÓRICO */}
       <Card className="bg-zinc-900 border-zinc-800">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
