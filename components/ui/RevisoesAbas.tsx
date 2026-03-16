@@ -1,6 +1,5 @@
 "use client";
 
-import { ConcluirRevisaoModal } from "@/components/ui/ConcluirRevisaoModal";
 import {
   Card,
   CardContent,
@@ -8,6 +7,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ConcluirRevisaoModal } from "@/components/ui/ConcluirRevisaoModal";
+import { toast } from "@/components/ui/Toast";
 import {
   AlertTriangle,
   CalendarRange,
@@ -30,7 +31,7 @@ type Props = {
   revisoesHoje: Revisao[];
   revisoesSemana: Revisao[];
   onConcluir: (formData: FormData) => Promise<void>;
-  materiasVesperaIds?: string[]; // ids das matérias em modo véspera
+  materiasVesperaIds?: string[];
 };
 
 export function RevisoesAbas({
@@ -75,6 +76,16 @@ export function RevisoesAbas({
         ? revisoesSemana
         : revisoesAtrasadas;
 
+  async function handleConcluir(formData: FormData) {
+    try {
+      await onConcluir(formData);
+      setRevisaoSelecionada(null);
+      toast("Revisão concluída! 🎉", "success");
+    } catch {
+      toast("Erro ao concluir revisão.", "error");
+    }
+  }
+
   return (
     <>
       {revisaoSelecionada && (
@@ -83,7 +94,7 @@ export function RevisoesAbas({
           materiaNome={revisaoSelecionada.materia.nome}
           dataProgramada={revisaoSelecionada.dataProgramada}
           onFechar={() => setRevisaoSelecionada(null)}
-          onConcluir={onConcluir}
+          onConcluir={handleConcluir}
         />
       )}
 
@@ -98,7 +109,6 @@ export function RevisoesAbas({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* ALERTA DE ATRASADAS */}
           {revisoesAtrasadas.length > 0 && abaAtiva !== "atrasadas" && (
             <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
               <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
@@ -116,7 +126,6 @@ export function RevisoesAbas({
             </div>
           )}
 
-          {/* ABAS */}
           <div className="flex border-b border-zinc-800">
             {abas.map((aba) => (
               <button
@@ -131,11 +140,7 @@ export function RevisoesAbas({
                 {aba.label}
                 {aba.count > 0 && (
                   <span
-                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                      abaAtiva === aba.id
-                        ? "bg-current/10"
-                        : "bg-zinc-800 text-zinc-400"
-                    }`}
+                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${abaAtiva === aba.id ? "bg-current/10" : "bg-zinc-800 text-zinc-400"}`}
                   >
                     {aba.count}
                   </span>
@@ -144,7 +149,6 @@ export function RevisoesAbas({
             ))}
           </div>
 
-          {/* CONTEÚDO */}
           {revisoesAtivas.length === 0 ? (
             <div className="text-center py-10 border-2 border-dashed border-zinc-800 rounded-xl">
               <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-3" />
@@ -158,11 +162,9 @@ export function RevisoesAbas({
           ) : (
             <div className="space-y-3">
               {revisoesAtivas.map((rev) => {
-                // matéria em modo véspera — só destaca na aba "hoje"
                 const isVespera =
                   abaAtiva === "hoje" &&
                   materiasVesperaIds.includes(rev.materia.nome);
-
                 return (
                   <div
                     key={rev.id}

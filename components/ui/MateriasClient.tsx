@@ -2,7 +2,9 @@
 
 import { DeletarMateriaModal } from "@/components/ui/DeletarMateriaModal";
 import { EditarMateriaModal } from "@/components/ui/EditarMateriaModal";
+import { toast } from "@/components/ui/Toast";
 import { Calendar, Pencil, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 type Materia = {
@@ -28,8 +30,20 @@ export function MateriasClient({
   onEditar,
   onDeletar,
 }: Props) {
+  const router = useRouter();
   const [editando, setEditando] = useState<Materia | null>(null);
   const [deletando, setDeletando] = useState<Materia | null>(null);
+
+  async function handleEditar(formData: FormData) {
+    try {
+      await onEditar(formData);
+      toast("Matéria atualizada com sucesso!", "success");
+      setEditando(null);
+      router.refresh();
+    } catch {
+      toast("Erro ao atualizar matéria.", "error");
+    }
+  }
 
   return (
     <>
@@ -37,7 +51,7 @@ export function MateriasClient({
         <EditarMateriaModal
           materia={editando}
           onFechar={() => setEditando(null)}
-          onSalvar={onEditar}
+          onSalvar={handleEditar}
         />
       )}
       {deletando && (

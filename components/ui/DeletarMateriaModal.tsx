@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/Toast";
 import { AlertTriangle, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -23,10 +24,16 @@ export function DeletarMateriaModal({
 
   async function handleConfirmar() {
     setDeletando(true);
-    await onConfirmar(materiaId);
-    setDeletando(false);
-    onFechar();
-    router.refresh();
+    try {
+      await onConfirmar(materiaId);
+      toast(`"${materiaNome}" deletada com sucesso.`, "success");
+      onFechar();
+      router.refresh();
+    } catch {
+      toast("Erro ao deletar matéria.", "error");
+    } finally {
+      setDeletando(false);
+    }
   }
 
   return (

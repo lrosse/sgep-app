@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { Sidebar } from "@/components/ui/Sidebar";
+import { ToastContainer } from "@/components/ui/Toast";
 import type { Metadata } from "next";
 import { SessionProvider } from "next-auth/react";
 import { Geist, Geist_Mono } from "next/font/google";
@@ -38,6 +39,7 @@ export default async function RootLayout({
             {children}
           </main>
         </SessionProvider>
+        <ToastContainer />
       </body>
     </html>
   );
