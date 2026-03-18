@@ -203,9 +203,11 @@ export default async function MateriasPage() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8 text-white">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8 text-white">
       <header>
-        <h1 className="text-3xl font-bold">Configuração de Disciplinas</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">
+          Configuração de Disciplinas
+        </h1>
         <p className="text-zinc-400">
           Insira os dados para o algoritmo de priorização.
         </p>

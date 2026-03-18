@@ -31,13 +31,15 @@ export default async function RootLayout({
   return (
     <html lang="pt-BR" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-950 text-zinc-50 flex h-screen overflow-hidden`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-950 text-zinc-50`}
       >
         <SessionProvider session={session}>
-          {session && <Sidebar />}
-          <main className="flex-1 overflow-y-auto bg-zinc-950/50">
-            {children}
-          </main>
+          <div className="flex h-screen overflow-hidden">
+            {session && <Sidebar />}
+            <main className="flex-1 overflow-y-auto bg-zinc-950/50 pt-14 md:pt-0">
+              {children}
+            </main>
+          </div>
         </SessionProvider>
         <ToastContainer />
       </body>

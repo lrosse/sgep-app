@@ -152,7 +152,7 @@ export default async function Dashboard() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8 text-white">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8 text-white">
       <header>
         <h1 className="text-3xl font-bold tracking-tight">
           Painel de Controle
